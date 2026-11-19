@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="my"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shop - လက်လီ / လက္ကား</title><script src="config.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Pyidaungsu",sans-serif;background:#f6f7f9;color:#17202a}
+header{background:#0f766e;color:#fff;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:5}
+header b{font-size:18px}.badge{background:#fff;color:#0f766e;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700}
+button{background:#0f766e;color:#fff;border:0;padding:9px 14px;border-radius:9px;cursor:pointer;font-weight:600}button.ghost{background:#fff;color:#0f766e;border:1px solid #0f766e}button.red{background:#dc2626}button:disabled{opacity:.5}
+input,select,textarea{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:9px;margin:4px 0 10px;background:#fff}
+.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px #0001;margin:12px 0}.wrap{max-width:1100px;margin:auto;padding:12px 16px 90px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:#fff;border-radius:14px;padding:14px}.stat b{font-size:22px;display:block}.muted{color:#6b7280;font-size:13px}.low{color:#dc2626;font-weight:700}.ok{color:#059669;font-weight:700}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}nav button{background:#e5e7eb;color:#111}nav button.on{background:#0f766e;color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{border-bottom:1px solid #eee;padding:7px;text-align:left}img.p{width:100%;height:130px;object-fit:cover;border-radius:10px;background:#eee}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{padding:6px 12px;border-radius:99px;background:#e5e7eb;cursor:pointer;font-size:13px}.chip.on{background:#0f766e;color:#fff}
+#cartBar{position:fixed;bottom:0;left:0;right:0;background:#111827;color:#fff;padding:12px 16px;display:none;justify-content:space-between;align-items:center;z-index:6}
+#login{max-width:420px;margin:8vh auto}.toast{position:fixed;top:14px;right:14px;background:#111827;color:#fff;padding:12px 16px;border-radius:10px;display:none;z-index:9}
+.row{display:flex;gap:8px}.row>*{flex:1}@media(max-width:600px){.row{flex-direction:column}}
+</style></head><body>
+<div class="toast" id="toast"></div>
+
+<!-- LOGIN -->
+<div id="login" class="wrap"><div class="card">
+<h2>🏪 <span id="shopName">My Shop</span></h2>
+<p class="muted">Admin ဆိုရင် Admin Key နဲ့၊ User / Staff ဆိုရင် User Key နဲ့ ဝင်ပါ။<br>Key အမျိုးအစားကို system က အလိုအလျောက် သိပြီး သက်ဆိုင်ရာ Dashboard ကို ပြပေးမယ်။</p>
+<label>🔑 Key</label><input id="keyInput" type="password" placeholder="ဥပမာ admin123 / user123 (စစချင်း default)">
+<button style="width:100%" onclick="doLogin()">Login ဝင်မယ်</button>
+<p class="muted" id="loginErr"></p>
+<p class="muted">⚠️ Default key တွေကို Admin က Keys page / Google Sheet မှာ ချက်ချင်း ပြောင်းပါ။</p>
+</div></div>
+
+<!-- APP -->
+<div id="app" style="display:none">
+<header><b>🏪 <span id="shopName2"></span></b><span class="badge" id="roleBadge"></span><span class="muted" style="color:#d1fae5" id="labelTxt"></span>
+<span style="flex:1"></span><button class="ghost" onclick="exportCSV()">⬇ CSV Export</button><button class="red" onclick="logout()">Logout</button></header>
+<div class="wrap">
+<nav id="tabs"></nav>
+<div id="view"></div>
+</div></div>
+
+<div id="cartBar"><span>🛒 Cart: <b id="cartInfo">0</b></span><button onclick="showView('cart')">Checkout သွားမယ် →</button></div>
+
+<script>
+let KEY=localStorage.getItem('shop_key')||'', ROLE=localStorage.getItem('shop_role')||'', LABEL='', PRODUCTS=[], CATS=[], CART=JSON.parse(localStorage.getItem('shop_cart')||'[]'), VIEW='dashboard', CAT='', SORT='new';
+const $=id=>document.getElementById(id); const fmt=n=>Number(n||0).toLocaleString('en-US')+' Ks';
+function toast(m){$('toast').textContent=m;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3200)}
+async function api(body){ if(!window.SHOP_API_URL||window.SHOP_API_URL.includes('PASTE_')) throw new Error('config.js မှာ Apps Script URL အရင် ထည့်ပါ');
+  const r=await fetch(window.SHOP_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...body,key:KEY})}); const j=await r.json(); if(!j.ok) throw new Error(j.error||'error'); return j; }
+async function doLogin(){ KEY=$('keyInput').value.trim(); try{ const r=await fetch(window.SHOP_API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'login',key:KEY})}); const j=await r.json(); if(!j.ok) throw new Error(j.error); ROLE=j.role; LABEL=j.label; localStorage.setItem('shop_key',KEY); localStorage.setItem('shop_role',ROLE); enter(j.shop);}catch(e){$('loginErr').textContent='❌ '+e.message} }
+function enter(shop){ $('login').style.display='none'; $('app').style.display='block'; $('shopName2').textContent=shop||window.SHOP_NAME; $('roleBadge').textContent=ROLE==='admin'?'ADMIN':'USER'; $('labelTxt').textContent=LABEL; buildTabs(); loadAll(); }
+function logout(){ localStorage.removeItem('shop_key'); localStorage.removeItem('shop_role'); location.reload(); }
+function buildTabs(){ const tabs=ROLE==='admin'?[['dashboard','📊 Dashboard'],['shop','🛍️ ဆိုင် / ပစ္စည်းများ'],['add','➕ ပစ္စည်းသစ် + အဝင်'],['sales','🧾 အရောင်းမှတ်တမ်း'],['orders','📦 Orders'],['report','📈 Report'],['keys','🔑 Keys စီမံရန်']]:[['dashboard','📊 Dashboard'],['shop','🛍️ ဆိုင် / ပစ္စည်းများ'],['sales','🧾 အရောင်းမှတ်တမ်း'],['orders','📦 Orders']];
+  $('tabs').innerHTML=tabs.map(t=>`<button class="${VIEW===t[0]?'on':''}" onclick="showView('${t[0]}')">${t[1]}</button>`).join(''); }
+async function loadAll(){ try{ CATS=(await api({action:'getCategories'})).data; PRODUCTS=(await api({action:'getProducts'})).data; }catch(e){ toast(e.message) } showView(VIEW); updateCartBar(); }
+function showView(v){ VIEW=v; buildTabs(); ({dashboard:viewDash,shop:viewShop,cart:viewCart,add:viewAdd,sales:viewSales,orders:viewOrders,report:viewReport,keys:viewKeys}[v]||viewDash)(); }
+function updateCartBar(){ const n=CART.reduce((a,c)=>a+c.qty,0), t=CART.reduce((a,c)=>a+c.qty*c.unit_price,0); $('cartBar').style.display=n?'flex':'none'; $('cartInfo').textContent=n+' မျိုး • '+fmt(t); localStorage.setItem('shop_cart',JSON.stringify(CART)); }
+
+// ---------- Dashboard ----------
+async function viewDash(){ const d=(await api({action:'getDashboard'})).data; $('view').innerHTML=`<div class="stats">
+<div class="stat"><span class="muted">ပစ္စည်းအမျိုးအမည်</span><b>${d.total_products}</b></div>
+<div class="stat"><span class="muted">Stock လက်ကျန် (စုစုပေါင်း)</span><b>${fmt(d.total_stock_units).replace(' Ks','')}</b></div>
+${ROLE==='admin'?`<div class="stat"><span class="muted">Stock တန်ဖိုး (အရင်းနဲ့)</span><b>${fmt(d.stock_value_cost)}</b></div>`:''}
+<div class="stat"><span class="muted">ဒီနေ့ အရောင်း</span><b>${fmt(d.today_sales_total)}</b><span class="muted">${d.today_sales_count} ကြိမ်</span></div>
+${ROLE==='admin'?`<div class="stat"><span class="muted">ဒီနေ့ အမြတ်</span><b class="ok">${fmt(d.today_profit)}</b></div>`:''}
+<div class="stat"><span class="muted">Stock နည်းနေတာ ⚠️</span><b class="low">${d.low_stock_count}</b></div></div>
+<div class="card"><h3>⚠️ Low Stock သတိပေးချက်</h3>${d.low_stock.length?d.low_stock.map(p=>`<p>• ${p.name} — လက်ကျန် <span class="low">${p.stock_balance}</span> ${p.unit||''}</p>`).join(''):'<p class="ok">အကုန် အဆင်ပြေတယ် ✓</p>'}</div>
+<div class="card"><h3>အမြန် လုပ်ရန်</h3><div class="row"><button onclick="showView('shop')">🛍️ ရောင်းမယ် / Cart ထည့်မယ်</button>${ROLE==='admin'?'<button onclick="showView(\'add\')">➕ ပစ္စည်းအဝင် သွင်းမယ်</button>':''}</div></div>`; }
+
+// ---------- Shop / Catalog (Ecommerce) ----------
+function viewShop(){ let list=PRODUCTS.filter(p=>!CAT||p.category===CAT);
+  if(SORT==='price_low') list.sort((a,b)=>a.selling_price-b.selling_price); if(SORT==='price_high') list.sort((a,b)=>b.selling_price-a.selling_price); if(SORT==='stock') list.sort((a,b)=>b.stock_balance-a.stock_balance);
+  $('view').innerHTML=`<div class="card"><div class="row"><input id="q" placeholder="🔍 အမည် / SKU / Barcode / Brand ရှာရန်" oninput="searchP(this.value)"><select onchange="SORT=this.value;viewShop()"><option value="new">Sort: အသစ်ဆုံး</option><option value="price_low">ဈေး: နည်းရာမှ</option><option value="price_high">ဈေး: များရာမှ</option><option value="stock">Stock: များရာမှ</option></select></div>
+<div class="chips"><span class="chip ${!CAT?'on':''}" onclick="CAT='';viewShop()">အကုန်</span>${CATS.map(c=>`<span class="chip ${CAT===c?'on':''}" onclick="CAT='${c}';viewShop()">${c}</span>`).join('')}</div></div>
+<div class="grid" id="plist">${list.map(cardHTML).join('')||'<p>ပစ္စည်း မရှိသေးဘူး</p>'}</div>`; }
+function cardHTML(p){ const low=Number(p.stock_balance)<=Number(p.low_stock_threshold||5); return `<div class="card" style="margin:0">
+${p.image_url?`<img class="p" src="${p.image_url}">`:`<img class="p">`}
+<b>${p.name}</b><br><span class="muted">${p.category||''} ${p.sku?'• '+p.sku:''} • ${p.date||''}</span><br>
+လက်လီ: <b>${fmt(p.selling_price)}</b><br>လက္ကား: <b>${fmt(p.wholesale_price)}</b>${ROLE==='admin'&&p.cost_price!==undefined?`<br><span class="muted">အရင်း: ${fmt(p.cost_price)} • အမြတ်: ${fmt(p.selling_price-p.cost_price)}</span>`:''}<br>
+Stock: <span class="${low?'low':'ok'}">${p.stock_balance} ${p.unit||''}</span> <span class="muted">(ဝင် ${p.qty_in} / ရောင်းပြီး ${p.qty_sold})</span><br><br>
+<div class="row"><button ${p.stock_balance<=0?'disabled':''} onclick="addCart('${p.product_id}','retail')">🛒 လက်လီ ထည့်</button><button class="ghost" ${p.stock_balance<=0?'disabled':''} onclick="addCart('${p.product_id}','wholesale')">လက္ကား ထည့်</button></div>
+${ROLE==='admin'?`<div class="row" style="margin-top:6px"><button class="ghost" onclick="stockInPrompt('${p.product_id}')">📥 အဝင် +</button><button class="ghost" onclick="editP('${p.product_id}')">✏️ ပြင်</button><button class="red" onclick="delP('${p.product_id}')">ဖျက်</button></div>`:''}</div>`; }
+function searchP(q){ q=q.toLowerCase(); document.querySelectorAll('#plist>div').forEach((el,i)=>{}); /* simple: reload filtered */ PRODUCTS._q=q; const list=PRODUCTS.filter(p=>(p.name+' '+p.sku+' '+p.brand+' '+p.category).toLowerCase().includes(q)&&(!CAT||p.category===CAT)); $('plist').innerHTML=list.map(cardHTML).join('')||'<p>မတွေ့ဘူး</p>'; }
+function addCart(id,type){ const p=PRODUCTS.find(x=>x.product_id===id); const price=type==='wholesale'?p.wholesale_price:p.selling_price; const ex=CART.find(c=>c.product_id===id&&c.price_type===type); if(ex){ if(ex.qty>=p.stock_balance) return toast('Stock မလောက်ဘူး'); ex.qty++; } else CART.push({product_id:id,name:p.name,qty:1,price_type:type,unit_price:Number(price)}); updateCartBar(); toast('Cart ထဲ ထည့်ပြီး ✓'); }
+
+// ---------- Cart / Checkout ----------
+function viewCart(){ $('view').innerHTML=`<div class="card"><h3>🛒 Cart</h3>${CART.length?CART.map((c,i)=>`<p>${c.name} (${c.price_type}) — <button class="ghost" onclick="CART[${i}].qty=Math.max(1,CART[${i}].qty-1);viewCart();updateCartBar()">-</button> ${c.qty} <button class="ghost" onclick="CART[${i}].qty++;viewCart();updateCartBar()">+</button> × ${fmt(c.unit_price)} = <b>${fmt(c.qty*c.unit_price)}</b> <button class="red" onclick="CART.splice(${i},1);viewCart();updateCartBar()">✕</button></p>`).join(''):'<p>Cart အလွတ်</p>'}
+<h3>စုစုပေါင်း: ${fmt(CART.reduce((a,c)=>a+c.qty*c.unit_price,0))}</h3>
+<label>ဝယ်သူ အမည်</label><input id="cName" placeholder="Walk-in"><label>ဖုန်း</label><input id="cPhone"><label>လိပ်စာ (Delivery ဆိုရင်)</label><textarea id="cAddr"></textarea>
+<label>ငွေချေနည်း</label><select id="cPay"><option>Cash</option><option>KBZPay</option><option>WavePay</option><option>AYA Pay</option><option>Card</option><option>အကြွေး (Credit)</option></select>
+<button style="width:100%" onclick="checkout()">✅ ရောင်းမယ် / Order တင်မယ်</button></div>`; }
+async function checkout(){ try{ const r=await api({action:'recordSale',items:CART,customer:{name:$('cName').value,phone:$('cPhone').value,address:$('cAddr').value},payment_method:$('cPay').value}); CART=[]; updateCartBar(); toast('ပြီးပြီ ✓ Order: '+r.order_id+' • '+fmt(r.total)); loadAll(); }catch(e){ toast('❌ '+e.message) } }
+
+// ---------- Admin: Add product + Stock In ----------
+function viewAdd(){ $('view').innerHTML=`<div class="card"><h3>➕ ပစ္စည်းအသစ် (နေ့စဉ် အဝင် အနေနဲ့ပါ မှတ်မယ်)</h3>
+<label>နေ့စွဲ *</label><input id="aDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+<label>ပစ္စည်း အမျိုးအမည် *</label><input id="aName" placeholder="ဥပမာ ဆန် 1 ပြည်">
+<div class="row"><div><label>Category</label><input id="aCat" list="cats" placeholder="General"><datalist id="cats">${CATS.map(c=>`<option>${c}</option>`).join('')}</datalist></div><div><label>SKU / Barcode</label><input id="aSku"></div></div>
+<div class="row"><div><label>Brand</label><input id="aBrand"></div><div><label>Unit</label><input id="aUnit" value="pcs"></div><div><label>ပုံ URL (Image)</label><input id="aImg" placeholder="https://..."></div></div>
+<div class="row"><div><label>ပစ္စည်းအဝင် အရေအတွက် *</label><input id="aQty" type="number" value="0"></div><div><label>အရင်းဈေး *</label><input id="aCost" type="number" value="0"></div></div>
+<div class="row"><div><label>လက္ကားဈေး</label><input id="aWhole" type="number" value="0"></div><div><label>အမြတ်တင်ပြီး ရောင်းဈေး (လက်လီ) *</label><input id="aSell" type="number" value="0"></div><div><label>Low Stock သတိပေး (ခု)</label><input id="aLow" type="number" value="5"></div></div>
+<label>Supplier / ဝယ်ခဲ့တဲ့ဆိုင်</label><input id="aSup">
+<button style="width:100%" onclick="addP()">သိမ်းမယ်</button></div>
+<div class="card"><h3>📥 ရှိပြီးသား ပစ္စည်းကို အဝင် ထပ်သွင်းရန်</h3><p class="muted">ဆိုင်ပစ္စည်းစာရင်းထဲက ပစ္စည်းကို ရွေးပြီး “📥 အဝင် +” ကို နှိပ်ပါ (Shop page မှာ ရှိတယ်)။</p></div>`; }
+async function addP(){ try{ await api({action:'addProduct',product:{date:$('aDate').value,name:$('aName').value,category:$('aCat').value,sku:$('aSku').value,brand:$('aBrand').value,unit:$('aUnit').value,image_url:$('aImg').value,qty_in:$('aQty').value,cost_price:$('aCost').value,wholesale_price:$('aWhole').value,selling_price:$('aSell').value,low_stock_threshold:$('aLow').value,supplier:$('aSup').value}}); toast('ပစ္စည်း ထည့်ပြီး ✓'); loadAll(); }catch(e){ toast('❌ '+e.message) } }
+async function stockInPrompt(id){ const qty=prompt('အဝင် အရေအတွက် ဘယ်လောက် သွင်းမလဲ?'); if(!qty) return; const cost=prompt('အရင်းဈေး (မပြောင်းရင် Cancel မဟုတ် - အလွတ်ထားရန် OK နှိပ်ပါ)',''); try{ await api({action:'stockIn',product_id:id,qty,cost_price:cost||undefined}); toast('အဝင် သွင်းပြီး ✓'); loadAll(); }catch(e){ toast('❌ '+e.message) } }
+function editP(id){ const p=PRODUCTS.find(x=>x.product_id===id); const name=prompt('အမည်',p.name); if(name===null) return; const sell=prompt('လက်လီရောင်းဈေး',p.selling_price); const whole=prompt('လက္ကားဈေး',p.wholesale_price); const cost=prompt('အရင်းဈေး',p.cost_price); api({action:'updateProduct',product:{product_id:id,name,selling_price:sell,wholesale_price:whole,cost_price:cost}}).then(()=>{toast('ပြင်ပြီး ✓');loadAll()}).catch(e=>toast(e.message)); }
+async function delP(id){ if(!confirm('ဒီပစ္စည်းကို ဖျက်မှာ သေချာလား?')) return; await api({action:'deleteProduct',product_id:id}); toast('ဖျက်ပြီး'); loadAll(); }
+
+// ---------- Sales / Orders / Report / Keys ----------
+async function viewSales(){ const rows=(await api({action:'getSales'})).data; $('view').innerHTML=`<div class="card"><h3>🧾 အရောင်းမှတ်တမ်း (နောက်ဆုံး ${rows.length})</h3><div style="overflow:auto"><table><tr><th>ရက်စွဲ</th><th>ပစ္စည်း</th><th>ခု</th><th>အမျိုးအစား</th><th>စုစုပေါင်း</th>${ROLE==='admin'?'<th>အမြတ်</th>':''}<th>ဝယ်သူ</th><th>ငွေချေ</th></tr>${rows.map(r=>`<tr><td>${r.date}</td><td>${r.product_name}</td><td>${r.qty}</td><td>${r.price_type}</td><td>${fmt(r.total)}</td>${ROLE==='admin'?`<td>${fmt(r.profit)}</td>`:''}<td>${r.customer_name||''}</td><td>${r.payment_method||''}</td></tr>`).join('')}</table></div></div>`; }
+async function viewOrders(){ const rows=(await api({action:'getOrders'})).data.reverse(); $('view').innerHTML=`<div class="card"><h3>📦 Orders</h3><div style="overflow:auto"><table><tr><th>Order ID</th><th>ရက်စွဲ</th><th>ဝယ်သူ</th><th>ဖုန်း</th><th>ပစ္စည်း</th><th>စုစုပေါင်း</th><th>Status</th>${ROLE==='admin'?'<th>ပြောင်း</th>':''}</tr>${rows.map(r=>`<tr><td>${r.order_id}</td><td>${r.date}</td><td>${r.customer_name}</td><td>${r.customer_phone||''}</td><td>${r.items_count}</td><td>${fmt(r.total)}</td><td>${r.status}</td>${ROLE==='admin'?`<td><select onchange="chgStatus('${r.order_id}',this.value)"><option></option><option>Pending</option><option>Confirmed</option><option>Delivered</option><option>Completed</option><option>Cancelled</option></select></td>`:''}</tr>`).join('')}</table></div></div>`; }
+async function chgStatus(id,s){ if(!s) return; await api({action:'updateOrderStatus',order_id:id,status:s}); toast('Status ပြောင်းပြီး ✓'); viewOrders(); }
+async function viewReport(){ const rows=(await api({action:'getReport',days:7})).data; const max=Math.max(...rows.map(r=>r.sales_total),1); $('view').innerHTML=`<div class="card"><h3>📈 နောက်ဆုံး 7 ရက် အရောင်း</h3>${rows.map(r=>`<p>${r.date} <span style="display:inline-block;background:#0f766e;height:14px;width:${Math.round(r.sales_total/max*55)}%"></span> ${fmt(r.sales_total)} (${r.qty} ခု)${ROLE==='admin'?' • အမြတ် '+fmt(r.profit):''}</p>`).join('')}</div>
+<div class="card"><h3>📥 Stock In မှတ်တမ်း</h3><div id="stockinLog">ခဏစောင့်...</div></div>`; const logs=(await api({action:'getStockInLog'})).data.reverse(); $('stockinLog').innerHTML=`<table><tr><th>ရက်စွဲ</th><th>ပစ္စည်း</th><th>ခု</th><th>အရင်း</th><th>Supplier</th><th>သွင်းသူ</th></tr>${logs.map(r=>`<tr><td>${r.date}</td><td>${r.product_name}</td><td>${r.qty}</td><td>${fmt(r.cost_price)}</td><td>${r.supplier||''}</td><td>${r.by_key_label||''}</td></tr>`).join('')}</table>`; }
+async function viewKeys(){ const rows=(await api({action:'getKeys'})).data; $('view').innerHTML=`<div class="card"><h3>🔑 Keys စီမံရန် (Admin သာ)</h3><p class="muted">နည်း ၃ နည်း: ၁) ဒီ page ကနေ ၂) Google Sheet > Keys tab မှာ တိုက်ရိုက် ပြင် ၃) Apps Script Editor မှာ setAdminKey() / addUserKey() run ။ Key အသစ် ပေးလိုက်ရင် အဟောင်းသုံးနေသူတွေ အတွက် active ပိတ်လိုက်/ဖျက်လိုက်ရုံပဲ။</p>
+<div style="overflow:auto"><table><tr><th>Role</th><th>Label</th><th>Key</th><th>Active</th><th>နောက်ဆုံး သုံးချိန်</th><th></th></tr>${rows.map(r=>`<tr><td>${r.role}</td><td>${r.label}</td><td><code>${r.key_value}</code></td><td>${r.active}</td><td>${r.last_used_at||''}</td><td><button class="red" onclick="delKey('${r.key_id}')">ဖျက် / ပိတ်</button></td></tr>`).join('')}</table></div>
+<h4>➕ Key အသစ် ထည့်ရန်</h4><div class="row"><select id="kRole"><option value="user">User</option><option value="admin">Admin</option></select><input id="kLabel" placeholder="Label ဥပမာ Staff - Aung Aung"><input id="kVal" placeholder="Key အသစ် (အနည်းဆုံး 4 လုံး)"></div><button onclick="addKey()">Key ထည့်မယ်</button></div>`; }
+async function addKey(){ try{ await api({action:'addKey',role:$('kRole').value,label:$('kLabel').value,key_value:$('kVal').value}); toast('Key ထည့်ပြီး ✓'); viewKeys(); }catch(e){ toast('❌ '+e.message) } }
+async function delKey(id){ if(!confirm('ဒီ Key ကို ဖျက်မှာ သေချာလား? အဲဒီ Key သုံးနေသူ ဝင်လို့ မရတော့ဘူး။')) return; await api({action:'deleteKey',key_id:id}); viewKeys(); }
+function exportCSV(){ const rows=[['date','name','category','sku','qty_in','cost_price','wholesale_price','selling_price','qty_sold','stock_balance'],...PRODUCTS.map(p=>[p.date,p.name,p.category,p.sku,p.qty_in,p.cost_price||'',p.wholesale_price,p.selling_price,p.qty_sold,p.stock_balance])]; const csv=rows.map(r=>r.map(x=>`"${String(x??'').replaceAll('"','""')}"`).join(',')).join('\n'); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'})); a.download='products.csv'; a.click(); }
+
+$('shopName').textContent=window.SHOP_NAME||'My Shop';
+if(KEY&&ROLE) enter(window.SHOP_NAME);
+$('keyInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+</script></body></html>
