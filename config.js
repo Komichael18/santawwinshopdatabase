@@ -4,4 +4,4 @@
 //  ဥပမာ: "https://script.google.com/macros/s/AKfycb.../exec"
 // ============================================================
 window.SHOP_API_URL = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
-window.SHOP_NAME = "My Shop - လက်လီ / လက္ကား";
+window.SHOP_NAME = "San Taw Win - လက်လီ / လက္ကား";
